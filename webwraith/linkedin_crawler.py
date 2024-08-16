@@ -39,7 +39,7 @@ class LinkedInCrawler:
                         "headline": (await headline.inner_text()).strip()
                     })
             await self.page.evaluate('window.scrollTo(0, document.body.scrollHeight)')
-            await asyncio.sleep(2)
+            await asyncio.sleep(20)
             new_height = await self.page.evaluate('document.body.scrollHeight')
             if new_height == last_height:
                 break
