@@ -2,6 +2,7 @@ import asyncio
 from playwright.async_api import async_playwright
 import easyocr
 from PIL import Image
+import numpy as np
 import io
 
 class BrowserControl:
@@ -29,7 +30,9 @@ class BrowserControl:
 
     async def extract_text_from_screenshot(self, screenshot_path):
         image = Image.open(screenshot_path)
-        results = self.ocr_reader.readtext(image)
+        # Convert PIL Image to numpy array
+        image_np = np.array(image)
+        results = self.ocr_reader.readtext(image_np)
         return ' '.join([result[1] for result in results])
 
     async def close(self):
@@ -39,7 +42,7 @@ class BrowserControl:
 async def main():
     browser_control = BrowserControl()
     await browser_control.start_browser()
-    await browser_control.navigate("https://example.com")
+    await browser_control.navigate("https://news.ycombinator.com/news")
     await browser_control.screenshot("example_screenshot.png")
     text = await browser_control.extract_text_from_screenshot("example_screenshot.png")
     print(f"Extracted text: {text}")

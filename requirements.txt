@@ -3,3 +3,4 @@ Click
 pytest
 substrate
 easyocr
+numpy
