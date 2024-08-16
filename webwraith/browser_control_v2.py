@@ -42,7 +42,7 @@ class BrowserControl:
 async def main():
     browser_control = BrowserControl()
     await browser_control.start_browser()
-    await browser_control.navigate("https://news.ycombinator.com/news")
+    await browser_control.navigate("https://news.google.com")
     await browser_control.screenshot("example_screenshot.png")
     text = await browser_control.extract_text_from_screenshot("example_screenshot.png")
     print(f"Extracted text: {text}")
