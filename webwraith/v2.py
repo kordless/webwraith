@@ -4,7 +4,6 @@ import os
 import json
 import ast
 import inspect
-import subprocess
 from typing import Dict, Any, List
 
 # Add the project root directory to the Python path
@@ -116,7 +115,7 @@ def function_info_decorator(func):
 
 @click.group()
 def cli():
-    pass
+    """WebWraith CLI - A powerful web crawling and automation tool."""
 
 # Setup
 @cli.command()
@@ -131,13 +130,12 @@ def setup(substrate_key):
 
 @cli.command()
 @click.option('--message', default=None, help='Custom message to display')
-@function_info_decorator
-def world(message: str = None) -> Dict[str, Any]:
+def hello(message: str = None) -> Dict[str, Any]:
     """
-    Prints Hello, world! or a custom message if provided.
+    Prints a greeting message, either 'Hello, World!' or a custom message if provided.
     When the model returns a value, it can put \(<val>\) around it to colorize it.
     
-    :param message: Optional custom message to display.
+    :param message: Optional custom message to display instead of 'World'.
     :type message: str
     :return: A dictionary containing the result of the operation.
     :rtype: dict
@@ -158,7 +156,7 @@ def world(message: str = None) -> Dict[str, Any]:
 
 @cli.command()
 @click.argument('command', nargs=-1)
-def run(command: tuple) -> None:
+def run(command: tuple) -> Dict[str, Any]:
     """
     Catch-all command that uses AI to process the input.
     :param command: The command and arguments to process.
@@ -170,7 +168,7 @@ def run(command: tuple) -> None:
     if substrate_key.get('error'):
         logger.error(f"Substrate key error: {substrate_key['error']}")
         click.echo(f"Error: {substrate_key['error']}")
-        return
+        return {"success": False, "error": substrate_key['error']}
 
     substrate = Substrate(api_key=substrate_key['token'])
 
@@ -202,7 +200,6 @@ Respond with a JSON object containing the function name and parameters."""
     try:
         logger.info("Sending request to Substrate API")
         result = substrate.run(json_node)
-        print(result.api_response.json)
         logger.info("Received response from Substrate API")
         logger.debug(f"Raw API response: {result.api_response.json}")
         
@@ -224,18 +221,24 @@ Respond with a JSON object containing the function name and parameters."""
             result = func(**func_params)
             logger.info(f"Function result: {result}")
             click.echo(f"Function result: {json.dumps(result, indent=2)}")
+            return {"success": True, "result": result}
         else:
             logger.warning(f"Function '{func_name}' not found in registry")
-            click.echo(f"Error: Function '{func_name}' not found in registry.")
+            error_message = f"Error: Function '{func_name}' not found in registry."
+            click.echo(error_message)
+            return {"success": False, "error": error_message}
     except json.JSONDecodeError as e:
         logger.error(f"JSON decoding error: {str(e)}")
-        click.echo(f"Error decoding JSON: {str(e)}")
+        error_message = f"Error decoding JSON: {str(e)}"
+        click.echo(error_message)
+        return {"success": False, "error": error_message}
     except Exception as e:
         exc_type, exc_value, exc_traceback = sys.exc_info()
         line_number = exc_traceback.tb_lineno
         error_message = f"Error processing command with AI on line {line_number}: {str(e)}"
         logger.error(error_message, exc_info=True)
         click.echo(error_message)
-
+        return {"success": False, "error": error_message}
+ 
 if __name__ == '__main__':
     cli()
