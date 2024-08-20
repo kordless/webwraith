@@ -13,4 +13,14 @@ Whether you're scraping data, testing web applications, or building AI agents th
 
 Materialize your web automation dreams with WebWraith - because in the world of open-source, every developer is a digital medium.
 
+## Integration with Substrate.run
+
+WebWraith leverages Substrate.run for advanced operations, including:
+- **LLM Transform of Data**: Transforming data using large language models for enhanced processing capabilities.
+- **Embeddings**: Creating vector representations of text for efficient search and retrieval.
+- **Search**: Integrating powerful search functionalities within your automated workflows.
+- **Function Control**: Utilizing AI-driven function execution to automate complex tasks efficiently.
+
+Learn more about Substrate.run and its capabilities at [substrate.run](https://substrate.run).
+
 Get started today at [github.com/kordless/webwraith](https://github.com/kordless/webwraith)

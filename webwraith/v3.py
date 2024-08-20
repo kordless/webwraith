@@ -3,8 +3,14 @@ import sys
 import os
 import json
 import ast
+import re
 import inspect
+import easyocr
 from typing import Dict, Any, List
+from playwright.async_api import async_playwright
+import easyocr
+from PIL import Image
+import numpy as np
 
 # Add the project root directory to the Python path
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
@@ -109,18 +115,55 @@ def convert_type_name(type_name):
     }
     return type_mapping.get(type_name, type_name)
 
+# Browser control class
+class BrowserControl:
+    def __init__(self):
+        self.browser = None
+        self.context = None
+        self.page = None
+        self.ocr_reader = easyocr.Reader(['en'])  # Initialize EasyOCR for English
+
+    async def start_browser(self):
+        playwright = await async_playwright().start()
+        self.browser = await playwright.chromium.launch(headless=True)
+        self.context = await self.browser.new_context()
+        self.page = await self.context.new_page()
+
+    async def navigate(self, url):
+        if not self.page:
+            await self.start_browser()
+        await self.page.goto(url)
+
+    async def screenshot(self, path):
+        if not self.page:
+            raise Exception("Browser not started")
+        await self.page.screenshot(path=path)
+
+    async def extract_text_from_screenshot(self, screenshot_path):
+        image = Image.open(screenshot_path)
+        # Convert PIL Image to numpy array
+        image_np = np.array(image)
+        results = self.ocr_reader.readtext(image_np)
+        return ' '.join([result[1] for result in results])
+
+    async def close(self):
+        if self.browser:
+            await self.browser.close()
+
+
+# The CLI
 @click.group()
 def cli():
-    """WebWraith CLI - A powerful web crawling and automation tool."""
+    """WebWraith CLI - A powerful web crawling tool."""
 
 @cli.command()
-@click.option('--substrate-key', help='API key for the substrate. If not provided, validates the existing key.', default=None)
+@click.option('--substrate-key', help='API key for Substrate. If not provided, validates the existing key.', default=None)
 @register_function
 def setup(substrate_key: str = None) -> Dict[str, Any]:
     """
-    Setup or validate the substrate key.
+    Setup or validates the Substrate.run API key.
 
-    :param substrate_key: API key for the substrate. If not provided, validates the existing key.
+    :param substrate_key: API key for Substrate.run. If not provided, validates the existing key.
     :type substrate_key: str or None
     :return: A dictionary containing the result of the operation.
     :rtype: Dict[str, Any]
@@ -145,22 +188,28 @@ def setup(substrate_key: str = None) -> Dict[str, Any]:
         return {"success": True, "result": success_message}
 
 @cli.command()
-@click.option('--message', default=None, help='Custom message to display')
+@click.argument('message', nargs=-1, default=None)
+@click.option('--message', '-m', 'message_option', help='Custom message to display')
 @register_function
-def hello(message: str = None) -> Dict[str, Any]:
+def hello(message: tuple = None, message_option: str = None) -> Dict[str, Any]:
     """
     Prints a greeting message, either 'Hello, World!' or a custom message if provided.
+    The message can be provided as positional arguments or using the --message option.
     When the model returns a value, it can put \(<val>\) around it to colorize it.
     
-    :param message: Optional custom message to display instead of 'World'.
-    :type message: str
+    :param message: Optional custom message to display (as positional arguments).
+    :type message: tuple
+    :param message_option: Optional custom message to display (using --message option).
+    :type message_option: str
     :return: A dictionary containing the result of the operation.
     :rtype: dict
     """
     logger.info("Hello, World! command was called")
     
-    if message:
-        display_message = f'Hello, {message}! Welcome to WebWraith CLI.'
+    if message_option:
+        display_message = f'Hello, {message_option}! Welcome to WebWraith CLI.'
+    elif message:
+        display_message = f'Hello, {"".join(message)}! Welcome to WebWraith CLI.'
     else:
         display_message = 'Hello, World! Welcome to WebWraith CLI.'
     
@@ -170,6 +219,83 @@ def hello(message: str = None) -> Dict[str, Any]:
         "success": True,
         "result": display_message
     }
+
+import asyncio
+
+@cli.command()
+@click.option('-f', '--file', required=True, help="The path to the file of URLs to crawl.")
+def crawl(file):
+    """Crawl the given file, take screenshots of each URL, and save them in the screenshots directory."""
+    asyncio.run(async_crawl(file))
+
+async def async_crawl(file):
+    try:
+        with open(file, 'r') as f:
+            content = f.read()
+            urls = extract_urls(content)
+
+        # Ensure the screenshots directory exists
+        screenshots_dir = config.get_screenshots_dir()
+        if not os.path.exists(screenshots_dir):
+            os.makedirs(screenshots_dir)
+
+        # Start the browser and crawl URLs
+        await crawl_urls(urls, screenshots_dir)
+        
+        click.echo(f"Crawling completed. {len(urls)} URLs processed.")
+        return {
+            "success": True,
+            "result": {
+                "file": file,
+                "urls_found": urls,
+                "url_count": len(urls)
+            }
+        }
+
+    except FileNotFoundError:
+        error_message = f"File '{file}' not found."
+        click.echo(error_message)
+        return {
+            "success": False,
+            "error": error_message
+        }
+    except Exception as e:
+        error_message = f"An error occurred while processing the file: {str(e)}"
+        click.echo(error_message)
+        return {
+            "success": False,
+            "error": error_message
+        }
+
+async def crawl_urls(urls, screenshots_dir):
+    """Crawl each URL and take screenshots."""
+    browser_control = BrowserControl()
+    await browser_control.start_browser()
+
+    for url in urls:
+        # Remove slashes and dots to create a valid filename
+        filename = url.replace('https://', '').replace('http://', '').replace('/', '_').replace('.', '_') + '.png'
+        screenshot_path = os.path.join(screenshots_dir, filename)
+        
+        try:
+            await browser_control.navigate(url)
+            await browser_control.screenshot(screenshot_path)
+            click.echo(f"Screenshot saved for {url}")
+            
+            # Extract text from the screenshot
+            text = await browser_control.extract_text_from_screenshot(screenshot_path)
+            click.echo(f"Extracted text from {url}: {text[:100]}...")  # Print first 100 characters
+        except Exception as e:
+            click.echo(f"Error processing {url}: {str(e)}")
+
+    await browser_control.close()
+
+# Crawl functions
+def extract_urls(file_content):
+    """Extract URLs from the given file content."""
+    url_pattern = re.compile(r'https?://\S+')
+    return url_pattern.findall(file_content)
+
 
 @cli.command()
 @click.argument('command', nargs=-1)
