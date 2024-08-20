@@ -223,16 +223,33 @@ def hello(message: tuple = None, message_option: str = None) -> Dict[str, Any]:
 import asyncio
 
 @cli.command()
-@click.option('-f', '--file', required=True, help="The path to the file of URLs to crawl.")
-def crawl(file):
-    """Crawl the given file, take screenshots of each URL, and save them in the screenshots directory."""
-    asyncio.run(async_crawl(file))
+@click.option('-f', '--file', help="The path to the file of URLs to crawl.")
+@click.option('-u', '--uri', help="A single URI to crawl.")
+@click.option('-s', '--statement', help="An optional statement to associate with the crawl.")
+def crawl(file, uri, statement):
+    """
+    Crawl the given file of URLs or a single URI, take screenshots, and optionally associate a statement.
+    Either --file or --uri must be provided.
+    """
+    if not file and not uri:
+        click.echo("Error: Either --file or --uri must be provided.")
+        return
 
-async def async_crawl(file):
+    if file and uri:
+        click.echo("Error: Please provide either --file or --uri, not both.")
+        return
+
+    asyncio.run(async_crawl(file, uri, statement))
+
+async def async_crawl(file, uri, statement):
     try:
-        with open(file, 'r') as f:
-            content = f.read()
-            urls = extract_urls(content)
+        urls = []
+        if file:
+            with open(file, 'r') as f:
+                content = f.read()
+                urls = extract_urls(content)
+        elif uri:
+            urls = [uri]
 
         # Ensure the screenshots directory exists
         screenshots_dir = config.get_screenshots_dir()
@@ -240,13 +257,15 @@ async def async_crawl(file):
             os.makedirs(screenshots_dir)
 
         # Start the browser and crawl URLs
-        await crawl_urls(urls, screenshots_dir)
+        await crawl_urls(urls, screenshots_dir, statement)
         
         click.echo(f"Crawling completed. {len(urls)} URLs processed.")
         return {
             "success": True,
             "result": {
                 "file": file,
+                "uri": uri,
+                "statement": statement,
                 "urls_found": urls,
                 "url_count": len(urls)
             }
@@ -260,14 +279,14 @@ async def async_crawl(file):
             "error": error_message
         }
     except Exception as e:
-        error_message = f"An error occurred while processing the file: {str(e)}"
+        error_message = f"An error occurred while processing: {str(e)}"
         click.echo(error_message)
         return {
             "success": False,
             "error": error_message
         }
 
-async def crawl_urls(urls, screenshots_dir):
+async def crawl_urls(urls, screenshots_dir, statement=None):
     """Crawl each URL and take screenshots."""
     browser_control = BrowserControl()
     await browser_control.start_browser()
@@ -285,6 +304,9 @@ async def crawl_urls(urls, screenshots_dir):
             # Extract text from the screenshot
             text = await browser_control.extract_text_from_screenshot(screenshot_path)
             click.echo(f"Extracted text from {url}: {text[:100]}...")  # Print first 100 characters
+            
+            if statement:
+                click.echo(f"Associated statement: {statement}")
         except Exception as e:
             click.echo(f"Error processing {url}: {str(e)}")
 
